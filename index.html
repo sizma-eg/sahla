@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>سهلة - الإعلانات</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="hide">
+<div id="hdr"></div>
+<main>
+  <div class="card">
+    <div class="g">
+      <input id="q" placeholder="بحث">
+      <select id="f_type"><option value="">كل الأنواع</option><option>مصنع</option><option>أمن</option><option>بنزينة</option><option>أخرى</option></select>
+      <select id="f_area"></select>
+      <select id="f_nationality"></select>
+      <select id="f_gender"><option value="">ذكور وإناث</option><option>ذكور</option><option>إناث</option></select>
+      <select id="f_hours"><option value="">كل الساعات</option><option value="8">8 ساعات</option><option value="12">12 ساعة</option><option value="16">16 ساعة</option></select>
+      <select id="f_housing"></select><select id="f_transport"></select><select id="f_advance"></select>
+      <select id="f_meals"></select><select id="f_insurance"></select><select id="f_students"></select>
+      <select id="f_status"><option value="active">النشطة</option><option value="done">المكتملة</option><option value="">الكل</option></select>
+    </div>
+    <div style="margin-top:10px">
+      <label>المرتب: من <b id="v1">5000</b> إلى <b id="v2">25000</b> جنيه</label>
+      <input type="range" id="smin" min="5000" max="25000" step="500" value="5000">
+      <input type="range" id="smax" min="5000" max="25000" step="500" value="25000">
+    </div>
+  </div>
+  <div class="row" style="justify-content:space-between;align-items:center"><span id="cnt"></span><button class="p" id="add">+ إعلان جديد</button></div>
+  <div id="list"></div>
+</main>
+
+<dialog id="dlg">
+  <h3 id="dt"></h3>
+  <div class="g">
+    <div><label>عنوان الإعلان *</label><input id="a_title"></div>
+    <div><label>نوع الوظيفة</label><select id="a_type"><option>مصنع</option><option>أمن</option><option>بنزينة</option><option>أخرى</option></select></div>
+    <div><label>اسم الجهة</label><input id="a_company"></div>
+    <div><label>المنطقة *</label><input id="a_area"></div>
+    <div><label>الجنسية</label><input id="a_nationality"></div>
+    <div><label>ذكور / إناث</label><select id="a_gender"><option value="">الاتنين</option><option>ذكور</option><option>إناث</option></select></div>
+    <div><label>السن من</label><input id="a_ageMin" type="number"></div>
+    <div><label>السن إلى</label><input id="a_ageMax" type="number"></div>
+    <div><label>الطول (سم)</label><input id="a_height" type="number"></div>
+    <div><label>مرتب 30 يوم</label><input id="a_pay30" type="number"></div>
+    <div><label>مرتب 25 يوم</label><input id="a_pay25" type="number"></div>
+    <div><label>الحالة</label><select id="a_status"><option value="active">نشط</option><option value="done">اكتمل</option></select></div>
+  </div>
+  <label style="margin-top:8px">ساعات العمل</label><div id="a_hours"></div>
+  <label>المزايا</label><div id="a_flags"></div>
+  <label>الأوراق المطلوبة</label><div id="a_papers"></div>
+  <label>ملاحظات</label><textarea id="a_notes" rows="3"></textarea>
+  <div id="aerr" class="d"></div>
+  <div class="row"><button class="p" id="asv">حفظ</button><button id="acl">إلغاء</button></div>
+</dialog>
+
+<script type="module">
+import{db,guard,$,$$,esc,collection,doc,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy}from"./app.js";
+
+const PAPERS=["بطاقة شخصية","شهادة ميلاد","شهادة جيش","شهادة مؤهل","إثبات قيد (طلبة)","فيش جنائي ساري","برنت تأمين","كعب عمل","جزمة سيفتي","نموذج 111","ورق كامل وأصول"];
+const FLAGS=[["housing","سكن"],["transport","مواصلات"],["advance","سلف"],["meals","وجبات"],["insurance","تأمين"]];
+const TX=["title","type","company","area","nationality","gender","status"],NU=["ageMin","ageMax","height","pay30","pay25"];
+let me,ads=[],editId=null;
+
+$("#a_hours").innerHTML=[8,12,16].map(h=>`<label class="cb"><input type="checkbox" name="h" value="${h}">${h} ساعة</label>`).join("");
+$("#a_flags").innerHTML=FLAGS.map(([k,n])=>`<label class="cb"><input type="checkbox" id="a_${k}">${n}</label>`).join("")+`<label class="cb"><input type="checkbox" id="a_students">يقبل طلبة</label>`;
+$("#a_papers").innerHTML=PAPERS.map(p=>`<label class="cb"><input type="checkbox" name="p" value="${p}">${p}</label>`).join("");
+FLAGS.concat([["students","الطلبة"]]).forEach(([k,n])=>$("#f_"+k).innerHTML=`<option value="">${n}: الكل</option><option value="1">${n}: متوفر</option><option value="0">${n}: غير متوفر</option>`);
+
+const val=id=>$("#"+id).value;
+
+function fillOptions(id,label,key){
+  const el=$("#"+id),cur=el.value,vs=[...new Set(ads.map(a=>a[key]).filter(Boolean))].sort();
+  el.innerHTML=`<option value="">${label}</option>`+vs.map(v=>`<option>${esc(v)}</option>`).join("");
+  el.value=vs.includes(cur)?cur:"";
+}
+
+function matches(a){
+  const q=val("q").trim();
+  if(q&&!`${a.title} ${a.company} ${a.area} ${a.notes}`.includes(q))return false;
+  if(val("f_type")&&a.type!==val("f_type"))return false;
+  if(val("f_area")&&a.area!==val("f_area"))return false;
+  if(val("f_nationality")&&a.nationality!==val("f_nationality"))return false;
+  if(val("f_gender")&&a.gender&&a.gender!==val("f_gender"))return false;
+  if(val("f_hours")&&!(a.hours||[]).includes(+val("f_hours")))return false;
+  for(const[k]of FLAGS.concat([["students"]])){const v=val("f_"+k);if(v&&!!a[k]!==(v==="1"))return false}
+  if(val("f_status")&&(a.status||"active")!==val("f_status"))return false;
+  const lo=+val("smin"),hi=+val("smax"),pays=[a.pay30,a.pay25].filter(Boolean);
+  if(pays.length?!pays.some(p=>p>=lo&&p<=hi):!(lo===5000&&hi===25000))return false;
+  return true;
+}
+
+const adText=a=>[
+  `📢 ${a.title}`,a.company&&`🏢 ${a.company}`,`📍 ${a.area}`,
+  a.hours?.length&&`⏰ ${a.hours.join(" / ")} ساعة`,
+  a.pay30&&`💰 ${a.pay30} جنيه (30 يوم عمل)`,a.pay25&&`💰 ${a.pay25} جنيه (25 يوم عمل)`,
+  a.nationality&&`🌍 ${a.nationality}`,a.gender&&`👤 ${a.gender}`,
+  (a.ageMin||a.ageMax)&&`🎂 السن ${a.ageMin||""} - ${a.ageMax||""}`,
+  a.height&&`📏 الطول ${a.height} سم`,a.students&&"🎓 يقبل طلبة",
+  ...FLAGS.filter(([k])=>a[k]).map(([,n])=>`✅ ${n}`),
+  a.papers?.length&&`📄 الأوراق: ${a.papers.join("، ")}`,a.notes&&`📝 ${a.notes}`
+].filter(Boolean).join("\n");
+
+function cardHtml(a){
+  return `<div class="card ${a.status==="done"?"done":""}">
+  <b>${esc(a.title)}</b> ${a.status==="done"?'<span class="tag no">اكتمل</span>':""}
+  <div style="color:var(--m)">${esc(a.company||"")} ${esc(a.type)} - ${esc(a.area)}</div>
+  <div>
+    ${(a.hours||[]).map(h=>`<span class="tag">${h} ساعة</span>`).join("")}
+    ${a.pay30?`<span class="tag ok">30 يوم: ${a.pay30}</span>`:""}${a.pay25?`<span class="tag ok">25 يوم: ${a.pay25}</span>`:""}
+    ${a.nationality?`<span class="tag">${esc(a.nationality)}</span>`:""}${a.gender?`<span class="tag">${a.gender}</span>`:""}
+    ${a.ageMin||a.ageMax?`<span class="tag">سن ${a.ageMin||""}-${a.ageMax||""}</span>`:""}${a.height?`<span class="tag">طول ${a.height}</span>`:""}
+    ${FLAGS.map(([k,n])=>`<span class="tag ${a[k]?"ok":"no"}">${n}</span>`).join("")}
+    <span class="tag ${a.students?"ok":"no"}">طلبة</span>
+  </div>
+  ${a.papers?.length?`<div>${a.papers.map(p=>`<span class="tag">${esc(p)}</span>`).join("")}</div>`:""}
+  ${a.notes?`<div>${esc(a.notes)}</div>`:""}
+  <div style="color:var(--m);font-size:12px">أضافه ${esc(a.by||"")}</div>
+  <div class="row">
+    <button data-c="${a.id}">نسخ الإعلان</button><button data-e="${a.id}">تعديل</button>
+    <button data-s="${a.id}">${a.status==="done"?"إعادة تنشيط":"تم الاكتمال"}</button><button class="d" data-x="${a.id}">حذف</button>
+  </div></div>`;
+}
+
+function render(){
+  fillOptions("f_area","كل المناطق","area");fillOptions("f_nationality","كل الجنسيات","nationality");
+  $("#v1").textContent=val("smin");$("#v2").textContent=val("smax");
+  const l=ads.filter(matches);$("#cnt").textContent=`${l.length} إعلان`;
+  $("#list").innerHTML=l.map(cardHtml).join("")||'<div class="card">مفيش إعلانات بالفلاتر دي. غيّر الفلاتر أو أضف إعلان جديد.</div>';
+}
+
+$$("main input,main select").forEach(i=>i.oninput=()=>{
+  if(+val("smin")>+val("smax")){if(i.id==="smin")$("#smax").value=val("smin");else $("#smin").value=val("smax")}
+  render();
+});
+
+$("#list").onclick=async e=>{
+  const b=e.target.closest("button");if(!b)return;
+  const a=ads.find(x=>x.id===(b.dataset.c||b.dataset.e||b.dataset.s||b.dataset.x));if(!a)return;
+  if(b.dataset.c){await navigator.clipboard.writeText(adText(a));b.textContent="تم النسخ";setTimeout(()=>b.textContent="نسخ الإعلان",1500)}
+  else if(b.dataset.e)openForm(a);
+  else if(b.dataset.s)updateDoc(doc(db,"ads",a.id),{status:a.status==="done"?"active":"done"});
+  else if(confirm("حذف الإعلان نهائياً؟"))deleteDoc(doc(db,"ads",a.id));
+};
+
+function openForm(a){
+  editId=a?.id||null;a=a||{status:"active",type:"مصنع"};
+  $("#dt").textContent=editId?"تعديل إعلان":"إعلان جديد";$("#aerr").textContent="";
+  TX.concat(NU).forEach(k=>$("#a_"+k).value=a[k]??"");
+  FLAGS.map(f=>f[0]).concat("students").forEach(k=>$("#a_"+k).checked=!!a[k]);
+  $$("[name=h]").forEach(c=>c.checked=(a.hours||[]).includes(+c.value));
+  $$("[name=p]").forEach(c=>c.checked=(a.papers||[]).includes(c.value));
+  $("#a_notes").value=a.notes||"";$("#dlg").showModal();
+}
+$("#add").onclick=()=>openForm();
+$("#acl").onclick=()=>$("#dlg").close();
+$("#asv").onclick=async()=>{
+  const d={};
+  TX.forEach(k=>d[k]=$("#a_"+k).value.trim());NU.forEach(k=>d[k]=+$("#a_"+k).value||0);
+  FLAGS.map(f=>f[0]).concat("students").forEach(k=>d[k]=$("#a_"+k).checked);
+  d.hours=$$("[name=h]:checked").map(c=>+c.value);d.papers=$$("[name=p]:checked").map(c=>c.value);d.notes=$("#a_notes").value.trim();
+  if(!d.title||!d.area){$("#aerr").textContent="اكتب عنوان الإعلان والمنطقة";return}
+  try{
+    if(editId)await updateDoc(doc(db,"ads",editId),d);
+    else await addDoc(collection(db,"ads"),{...d,createdAt:Date.now(),by:me.username});
+    $("#dlg").close();
+  }catch(e){$("#aerr").textContent="تعذر الحفظ، تأكد من الاتصال والصلاحيات"}
+};
+
+guard("index.html",u=>{
+  me=u;
+  onSnapshot(query(collection(db,"ads"),orderBy("createdAt","desc")),s=>{ads=s.docs.map(d=>({id:d.id,...d.data()}));render()});
+});
+</script>
+</body>
+</html>

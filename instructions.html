@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>سهلة - التعليمات</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="hide">
+<div id="hdr"></div>
+<main>
+  <div class="card">
+    <div id="ins"></div>
+    <div class="row hide" id="owner"><button id="ied">تعديل التعليمات</button></div>
+    <div id="ibox" class="hide">
+      <textarea id="itx" rows="18"></textarea>
+      <div class="row"><button class="p" id="isv">حفظ</button><button id="ics">إلغاء</button></div>
+    </div>
+  </div>
+</main>
+<script type="module">
+import{db,guard,$,doc,setDoc,onSnapshot}from"./app.js";
+const DEF=`يقين للتوريدات العمومية والعمالة الداخلية
+
+اقرأ الإعلان كويس قبل توجيه أي متقدم. الإعلان هو المرجع وأي شرط مكتوب فيه ملزم. ممنوع التخمين أو المعلومات القديمة.
+
+المصانع
+- التقديم بالبطاقة الشخصية الأصل فقط (ممنوع صورة البطاقة أو شهادة الميلاد بدلها) إلا لو الإعلان طلب ورق كامل.
+- الطلبة مقبولين إلا لو الإعلان قال غير كده (زي شيبسي).
+- راجع السن وقبول الطلبة وبطاقة فقط ولا ورق كامل.
+
+الأمن
+- الأوراق: بطاقة، شهادة ميلاد، شهادة جيش (إعفاء / تأجيل / أدى الخدمة)، مؤهل (أقله ابتدائي)، فيش جنائي ساري موجه لشركة يقين.
+- الحد الأدنى لو الورق ناقص: بطاقة + شهادة ميلاد + فيش ساري، ويقرأ ويكتب كويس.
+- الطلبة: إثبات قيد بدل المؤهل والجيش.
+- لو الإعلان مكتوب فيه "ورق كامل" لازم الورق كامل.
+- الطول: 170 سم كحد أدنى، و165 للساحل الشمالي أو العاصمة الإدارية حسب الإعلان.
+- التقديم من الأحد للخميس فقط (الشركات إجازة الجمعة والسبت).
+
+البنزينات
+- ورق كامل وبالأصول، وممنوع التقديم بورق ناقص: بطاقة، ميلاد، جيش، مؤهل، فيش باسم أي بي إس (ibs)، برنت تأمين، كعب عمل، جزمة سيفتي، نموذج 111.
+- الطلبة: إثبات قيد بدل المؤهل والجيش.
+- برنت التأمينات من مكتب التأمينات التابع لمنطقته، وكعب العمل من مكتب العمل التابع لمنطقته، والفيش من الجهة المختصة بالاسم المطلوب في الإعلان.
+- نموذج 111 هو الكشف الطبي: يتجاب فاضي من أي مستشفى حكومي ثم يتم الكشف عليه.
+- جزمة السيفتي تتجاب قبل التقديم أو حسب تعليمات جهة العمل.
+
+ممنوع تشغيل أو إرسال متقدمين على إعلان تأكد إنه اكتمل.`;
+
+guard("instructions.html",(me,own)=>{
+  $("#owner").classList.toggle("hide",!own);
+  onSnapshot(doc(db,"settings","instructions"),s=>{$("#ins").textContent=s.exists()?s.data().text:DEF});
+  $("#ied").onclick=()=>{$("#itx").value=$("#ins").textContent;$("#ibox").classList.remove("hide")};
+  $("#ics").onclick=()=>$("#ibox").classList.add("hide");
+  $("#isv").onclick=async()=>{await setDoc(doc(db,"settings","instructions"),{text:$("#itx").value});$("#ibox").classList.add("hide")};
+});
+</script>
+</body>
+</html>

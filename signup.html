@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>سهلة - حساب جديد</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="login">
+  <div id="logo"></div>
+  <h1>حساب جديد</h1>
+  <input id="su" placeholder="اسم المستخدم (إنجليزي)" autocomplete="username" dir="ltr">
+  <input id="sp" type="password" placeholder="كلمة المرور (6 أحرف على الأقل)" autocomplete="new-password" dir="ltr">
+  <input id="sp2" type="password" placeholder="أعد كتابة كلمة المرور" autocomplete="new-password" dir="ltr">
+  <div id="err"></div>
+  <button class="p" id="sb" style="width:100%">إنشاء الحساب</button>
+  <p><a href="login.html" style="color:var(--a)">عندي حساب بالفعل</a></p>
+</div>
+<script type="module">
+import{auth,db,createUserWithEmailAndPassword,signOut,doc,setDoc,E,$,LOGO}from"./app.js";
+$("#logo").innerHTML=LOGO.replace('width="34" height="34"','width="64" height="64"');
+const msg=(t,ok)=>{$("#err").textContent=t;$("#err").style.color=ok?"var(--a)":"var(--r)"};
+$("#sb").onclick=async()=>{
+  const u=$("#su").value.trim(),p=$("#sp").value;
+  if(!/^[A-Za-z0-9._-]+$/.test(u)){msg("اسم المستخدم إنجليزي من غير مسافات");return}
+  if(p.length<6){msg("كلمة المرور 6 أحرف على الأقل");return}
+  if(p!==$("#sp2").value){msg("كلمتا المرور مش متطابقتين");return}
+  $("#sb").disabled=true;
+  try{
+    const c=await createUserWithEmailAndPassword(auth,E(u),p);
+    await setDoc(doc(db,"users",c.user.uid),{username:u,role:"staff",active:false});
+    await signOut(auth);
+    msg("تم إنشاء الحساب. استنى صاحب النظام يفعّله وبعدها سجّل دخول.",true);
+    $("#sb").classList.add("hide");
+  }catch(e){
+    msg(e.code==="auth/email-already-in-use"?"اسم المستخدم ده مستخدم، اختار غيره":"حصل خطأ، حاول تاني");
+    $("#sb").disabled=false;
+  }
+};
+</script>
+</body>
+</html>
