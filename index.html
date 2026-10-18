@@ -175,7 +175,7 @@ $("#asv").onclick=async()=>{
   if(!d.title||!d.area){$("#aerr").textContent="اكتب عنوان الإعلان والمنطقة";return}
   try{
     if(editId)await updateDoc(doc(db,"ads",editId),d);
-    else await addDoc(collection(db,"ads"),{...d,...(queue.length?{raw:curRaw}:{}),createdAt:Date.now(),by:me.username});
+    else await addDoc(collection(db,"ads"),{...d,...(queue.length?{raw:curRaw}:{}),createdAt:Date.now(),by:me.username||"بدون اسم"});
     $("#dlg").close();nextQ();
   }catch(e){console.error(e);$("#aerr").textContent="تعذر الحفظ ("+(e.code||e.message)+")"}
 };
