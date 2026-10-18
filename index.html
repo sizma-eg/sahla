@@ -27,12 +27,20 @@
       <input type="range" id="smax" min="5000" max="25000" step="500" value="25000">
     </div>
   </div>
-  <div class="row" style="justify-content:space-between;align-items:center"><span id="cnt"></span><button class="p" id="add">+ إعلان جديد</button></div>
+  <div class="row" style="justify-content:space-between;align-items:center"><span id="cnt"></span><span class="row" style="margin:0"><button id="ptb">إضافة من نص</button><button class="p" id="add">+ إعلان جديد</button></span></div>
   <div id="list"></div>
 </main>
 
+<dialog id="pdlg">
+  <h3>إضافة من نص</h3>
+  <label>الصق رسالة الشركة هنا</label>
+  <textarea id="ptx" rows="10"></textarea>
+  <div id="pst" style="min-height:24px;color:var(--m)"></div>
+  <div class="row"><button class="p" id="pgo">حلّل</button><button id="pcl">إلغاء</button></div>
+</dialog>
+
 <dialog id="dlg">
-  <h3 id="dt"></h3>
+  <h3 id="dt"></h3><div id="qinfo" style="color:var(--a)"></div>
   <div class="g">
     <div><label>عنوان الإعلان *</label><input id="a_title"></div>
     <div><label>نوع الوظيفة</label><select id="a_type"><option>مصنع</option><option>أمن</option><option>بنزينة</option><option>أخرى</option></select></div>
@@ -56,12 +64,13 @@
 </dialog>
 
 <script type="module">
+import{GEMINI_KEY,GEMINI_MODEL}from"./config.js";
 import{db,guard,$,$$,esc,collection,doc,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy}from"./app.js";
 
 const PAPERS=["بطاقة شخصية","شهادة ميلاد","شهادة جيش","شهادة مؤهل","إثبات قيد (طلبة)","فيش جنائي ساري","برنت تأمين","كعب عمل","جزمة سيفتي","نموذج 111","ورق كامل وأصول"];
 const FLAGS=[["housing","سكن"],["transport","مواصلات"],["advance","سلف"],["meals","وجبات"],["insurance","تأمين"]];
 const TX=["title","type","company","area","nationality","gender","status"],NU=["ageMin","ageMax","height","pay30","pay25"];
-let me,ads=[],editId=null;
+let me,ads=[],editId=null,queue=[],qi=0,curRaw="";
 
 $("#a_hours").innerHTML=[8,12,16].map(h=>`<label class="cb"><input type="checkbox" name="h" value="${h}">${h} ساعة</label>`).join("");
 $("#a_flags").innerHTML=FLAGS.map(([k,n])=>`<label class="cb"><input type="checkbox" id="a_${k}">${n}</label>`).join("")+`<label class="cb"><input type="checkbox" id="a_students">يقبل طلبة</label>`;
@@ -116,6 +125,7 @@ function cardHtml(a){
   </div>
   ${a.papers?.length?`<div>${a.papers.map(p=>`<span class="tag">${esc(p)}</span>`).join("")}</div>`:""}
   ${a.notes?`<div>${esc(a.notes)}</div>`:""}
+  ${a.raw?`<details><summary>النص الأصلي</summary><div style="white-space:pre-wrap">${esc(a.raw)}</div></details>`:""}
   <div style="color:var(--m);font-size:12px">أضافه ${esc(a.by||"")}</div>
   <div class="row">
     <button data-c="${a.id}">نسخ الإعلان</button><button data-e="${a.id}">تعديل</button>
@@ -147,6 +157,7 @@ $("#list").onclick=async e=>{
 function openForm(a){
   editId=a?.id||null;a=a||{status:"active",type:"مصنع"};
   $("#dt").textContent=editId?"تعديل إعلان":"إعلان جديد";$("#aerr").textContent="";
+  $("#qinfo").textContent=queue.length?`إعلان ${qi+1} من ${queue.length}، راجع البيانات قبل الحفظ`:"";
   TX.concat(NU).forEach(k=>$("#a_"+k).value=a[k]??"");
   FLAGS.map(f=>f[0]).concat("students").forEach(k=>$("#a_"+k).checked=!!a[k]);
   $$("[name=h]").forEach(c=>c.checked=(a.hours||[]).includes(+c.value));
@@ -154,7 +165,8 @@ function openForm(a){
   $("#a_notes").value=a.notes||"";$("#dlg").showModal();
 }
 $("#add").onclick=()=>openForm();
-$("#acl").onclick=()=>$("#dlg").close();
+$("#acl").onclick=()=>{queue=[];$("#dlg").close()};
+function nextQ(){if(queue.length&&qi<queue.length-1){qi++;openForm(queue[qi])}else queue=[]}
 $("#asv").onclick=async()=>{
   const d={};
   TX.forEach(k=>d[k]=$("#a_"+k).value.trim());NU.forEach(k=>d[k]=+$("#a_"+k).value||0);
@@ -163,9 +175,35 @@ $("#asv").onclick=async()=>{
   if(!d.title||!d.area){$("#aerr").textContent="اكتب عنوان الإعلان والمنطقة";return}
   try{
     if(editId)await updateDoc(doc(db,"ads",editId),d);
-    else await addDoc(collection(db,"ads"),{...d,createdAt:Date.now(),by:me.username});
-    $("#dlg").close();
-  }catch(e){$("#aerr").textContent="تعذر الحفظ، تأكد من الاتصال والصلاحيات"}
+    else await addDoc(collection(db,"ads"),{...d,...(queue.length?{raw:curRaw}:{}),createdAt:Date.now(),by:me.username});
+    $("#dlg").close();nextQ();
+  }catch(e){console.error(e);$("#aerr").textContent="تعذر الحفظ ("+(e.code||e.message)+")"}
+};
+
+const PROMPT=`أنت مساعد يستخرج بيانات إعلانات الوظائف من نص عربي. النص ممكن يحتوي على إعلان واحد أو أكثر. رجّع JSON فقط: مصفوفة، عنصر لكل إعلان، بالحقول:
+title (عنوان قصير للإعلان), type (واحد من: مصنع، أمن، بنزينة، أخرى), company, area, nationality, gender (ذكور أو إناث أو فاضي), ageMin, ageMax, height (رقم), pay30 (المرتب لنظام 30 يوم عمل), pay25 (المرتب لنظام 25 يوم عمل), hours (مصفوفة من 8 و12 و16), housing, transport, advance, meals, insurance, students (true فقط لو مذكور صراحة، وإلا false), papers (مصفوفة من القائمة التالية بالنص الحرفي فقط: ${PAPERS.join("، ")}), notes (أي شروط أو تفاصيل مهمة تانية مش ليها حقل).
+قواعد: لا تخمّن أبداً. أي حقل مش مذكور اتركه "" أو 0 أو false أو []. الأرقام أرقام بدون نص. لا تضف أي كلام خارج الـ JSON.
+
+النص:
+`;
+const num=v=>+String(v??"").replace(/[٠-٩]/g,d=>"٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[^\d.]/g,"")||0;
+const str=v=>String(v??"").trim();
+const norm=x=>({status:"active",title:str(x.title),type:["مصنع","أمن","بنزينة","أخرى"].includes(x.type)?x.type:"أخرى",company:str(x.company),area:str(x.area),nationality:str(x.nationality),gender:["ذكور","إناث"].includes(x.gender)?x.gender:"",ageMin:num(x.ageMin),ageMax:num(x.ageMax),height:num(x.height),pay30:num(x.pay30),pay25:num(x.pay25),hours:(x.hours||[]).map(Number).filter(h=>[8,12,16].includes(h)),papers:(x.papers||[]).filter(p=>PAPERS.includes(p)),notes:str(x.notes),students:x.students===true,...Object.fromEntries(FLAGS.map(([k])=>[k,x[k]===true]))});
+
+$("#ptb").onclick=()=>{$("#pst").textContent="";$("#pdlg").showModal()};
+$("#pcl").onclick=()=>$("#pdlg").close();
+$("#pgo").onclick=async()=>{
+  const t=$("#ptx").value.trim();if(!t)return;
+  $("#pgo").disabled=true;$("#pst").textContent="جاري التحليل...";
+  try{
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":GEMINI_KEY},body:JSON.stringify({contents:[{parts:[{text:PROMPT+t}]}],generationConfig:{temperature:0,responseMimeType:"application/json"}})});
+    const j=await r.json();if(!r.ok)throw new Error(j.error?.message||r.status);
+    let out=JSON.parse((j.candidates?.[0]?.content?.parts?.[0]?.text||"").replace(/```json|```/g,"").trim());
+    if(!Array.isArray(out))out=[out];
+    if(!out.length)throw new Error("مفيش إعلانات في النص");
+    queue=out.map(norm);qi=0;curRaw=t;$("#pdlg").close();$("#ptx").value="";openForm(queue[0]);
+  }catch(e){console.error(e);$("#pst").textContent="تعذر التحليل: "+e.message}
+  $("#pgo").disabled=false;
 };
 
 guard("index.html",u=>{
