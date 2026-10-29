@@ -1,24 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function prof() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
-    function active() { return request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && prof().active == true; }
-    function owner() { return active() && prof().role == 'owner'; }
-
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function staff() { return request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function isOwner() { return staff() && me().role == 'owner'; }
     match /users/{id} {
-      allow read: if request.auth != null && (request.auth.uid == id || owner());
-      allow create: if owner() || (request.auth != null && request.auth.uid == id
-        && request.resource.data.keys().hasOnly(['username','role','active'])
-        && request.resource.data.role == 'staff'
-        && request.resource.data.active == false);
-      allow update, delete: if owner();
+      allow read: if request.auth != null && (request.auth.uid == id || isOwner());
+      allow write: if isOwner();
     }
-    match /ads/{id} {
-      allow read, write: if active();
-    }
-    match /settings/{id} {
-      allow read: if active();
-      allow write: if owner();
-    }
+    match /ads/{id} { allow read, write: if staff(); }
+    match /settings/{id} { allow read: if staff(); allow write: if isOwner(); }
   }
 }
